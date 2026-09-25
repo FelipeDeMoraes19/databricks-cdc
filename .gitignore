@@ -1,0 +1,27 @@
+# Databricks CLI / credentials
+.databrickscfg
+.databricks/
+*.token
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Environment / secrets
+.env
+.env.*
+
+# Local data & notebook outputs
+data/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
