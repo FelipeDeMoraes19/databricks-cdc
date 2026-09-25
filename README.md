@@ -16,11 +16,12 @@ Built and deployed on Databricks Free Edition (serverless compute).
 ## Structure
 
 ```
+databricks.yml       Databricks Asset Bundle definition (dev/prod targets)
+resources/           Asset Bundle job definitions
 src/cdc_demo/        transformation code (bronze/silver/gold), testable outside Databricks
 notebooks/           thin notebooks orchestrating the modules in src/
 notebooks/archive/   first, exploratory batch version of the project, kept for reference
 tests/               pytest tests for the functions in src/
-resources/           Databricks Asset Bundle job definitions
 ```
 
 ## Gold tables

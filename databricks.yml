@@ -1,0 +1,36 @@
+bundle:
+  name: databricks-cdc
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name
+    default: workspace
+  schema:
+    description: Schema name for this environment
+    default: payments_cdc
+  notify_email:
+    description: Email address notified on job failure
+    default: moorraes16@gmail.com
+
+include:
+  - resources/*.yml
+  - resources/**/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-b9472ec7-3706.cloud.databricks.com
+    variables:
+      schema: payments_cdc_dev
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-b9472ec7-3706.cloud.databricks.com
+      root_path: /Workspace/Users/moorraes16@gmail.com/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      schema: payments_cdc
+    run_as:
+      user_name: moorraes16@gmail.com
