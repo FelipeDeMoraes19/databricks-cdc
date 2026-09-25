@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -12,7 +13,8 @@ class PipelineConfig:
     silver_events_table: str = "silver_payment_events"
     quarantine_table: str = "quarantine_payments_cdc"
     dim_table: str = "dim_payments_scd2"
-    metrics_table: str = "fact_metrics_daily_status"
+    status_transitions_table: str = "fact_status_transitions_daily"
+    captured_volume_table: str = "fact_captured_volume_daily"
 
     @property
     def volume_path(self) -> str:
@@ -34,5 +36,10 @@ class PipelineConfig:
         return f"{self.catalog}.{self.schema}.{table_name}"
 
 
-def get_config() -> PipelineConfig:
-    return PipelineConfig()
+def get_config(catalog: Optional[str] = None, schema: Optional[str] = None) -> PipelineConfig:
+    overrides = {}
+    if catalog:
+        overrides["catalog"] = catalog
+    if schema:
+        overrides["schema"] = schema
+    return PipelineConfig(**overrides)

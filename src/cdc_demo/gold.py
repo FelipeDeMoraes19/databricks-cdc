@@ -23,15 +23,25 @@ def build_dim_payments_scd2(events_df: DataFrame) -> DataFrame:
     )
 
 
-def build_metrics_daily_status(events_df: DataFrame) -> DataFrame:
+def build_status_transitions_daily(events_df: DataFrame) -> DataFrame:
     return (
         events_df.withColumn("event_date", F.to_date("updated_at"))
         .groupBy("event_date", "status")
-        .agg(
-            F.count("*").alias("event_count"),
-            F.sum("amount").alias("total_amount"),
-        )
+        .agg(F.count("*").alias("transition_count"))
         .orderBy("event_date", "status")
+    )
+
+
+def build_captured_volume_daily(events_df: DataFrame) -> DataFrame:
+    return (
+        events_df.filter(F.col("status") == "CAPTURED")
+        .withColumn("event_date", F.to_date("updated_at"))
+        .groupBy("event_date")
+        .agg(
+            F.count("*").alias("captured_count"),
+            F.sum("amount").alias("captured_amount"),
+        )
+        .orderBy("event_date")
     )
 
 

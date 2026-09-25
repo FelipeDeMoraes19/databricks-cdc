@@ -23,5 +23,21 @@ tests/               pytest tests for the functions in src/
 resources/           Databricks Asset Bundle job definitions
 ```
 
+## Gold tables
+
+- **`dim_payments_scd2`** - SCD Type 2 dimension built from `silver_payment_events`.
+  One row per status transition, with `valid_from`/`valid_to`/`is_current`.
+  A `DELETE` event produces a tombstone row (`is_current = true`,
+  `is_deleted = true`) instead of a normal state.
+- **`fact_status_transitions_daily`** - count of status transition *events* per
+  day and status. A single payment contributes one row per status it passes
+  through (e.g. PENDING, AUTHORIZED, CAPTURED), so this counts process
+  throughput, not distinct payments or money.
+- **`fact_captured_volume_daily`** - count and total `amount` of payments that
+  reached `CAPTURED` status per day. This is the correct place to sum money:
+  each payment reaches `CAPTURED` at most once, so the sum isn't inflated by
+  earlier transitions (unlike grouping by status and summing `amount`, which
+  would count the same payment's amount once per status it passed through).
+
 Architecture diagram, technical decisions, run instructions, and results are
 documented at the end of the project.

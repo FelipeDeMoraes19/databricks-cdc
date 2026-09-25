@@ -15,7 +15,9 @@ from src.cdc_demo.silver import (
     make_batch_processor,
 )
 
-cfg = get_config()
+dbutils.widgets.text("catalog", "workspace")
+dbutils.widgets.text("schema", "payments_cdc")
+cfg = get_config(catalog=dbutils.widgets.get("catalog"), schema=dbutils.widgets.get("schema"))
 spark.sql(f"USE CATALOG {cfg.catalog}")
 spark.sql(f"USE SCHEMA {cfg.schema}")
 

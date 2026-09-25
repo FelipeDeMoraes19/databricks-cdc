@@ -10,7 +10,9 @@ sys.path.append(os.path.abspath(".."))
 from src.cdc_demo.bronze import read_bronze_stream, write_bronze_stream
 from src.cdc_demo.config import get_config
 
-cfg = get_config()
+dbutils.widgets.text("catalog", "workspace")
+dbutils.widgets.text("schema", "payments_cdc")
+cfg = get_config(catalog=dbutils.widgets.get("catalog"), schema=dbutils.widgets.get("schema"))
 spark.sql(f"USE CATALOG {cfg.catalog}")
 spark.sql(f"USE SCHEMA {cfg.schema}")
 

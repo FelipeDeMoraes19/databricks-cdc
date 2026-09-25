@@ -17,7 +17,9 @@ from src.cdc_demo.events import (
     write_events_as_json,
 )
 
-cfg = get_config()
+dbutils.widgets.text("catalog", "workspace")
+dbutils.widgets.text("schema", "payments_cdc")
+cfg = get_config(catalog=dbutils.widgets.get("catalog"), schema=dbutils.widgets.get("schema"))
 
 # COMMAND ----------
 
