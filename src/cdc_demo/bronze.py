@@ -1,7 +1,6 @@
-from typing import Any, Dict, List
-
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.streaming import StreamingQuery
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
 BRONZE_SCHEMA = StructType(
@@ -16,6 +15,22 @@ BRONZE_SCHEMA = StructType(
 )
 
 
-def build_bronze_df(spark: SparkSession, events: List[Dict[str, Any]]) -> DataFrame:
-    df = spark.createDataFrame(events, schema=BRONZE_SCHEMA)
-    return df.withColumn("_ingested_at", F.current_timestamp())
+def read_bronze_stream(spark: SparkSession, source_path: str) -> DataFrame:
+    return (
+        spark.readStream.format("cloudFiles")
+        .option("cloudFiles.format", "json")
+        .schema(BRONZE_SCHEMA)
+        .load(source_path)
+        .withColumn("_ingested_at", F.current_timestamp())
+    )
+
+
+def write_bronze_stream(stream_df: DataFrame, table_name: str, checkpoint_path: str) -> StreamingQuery:
+    query = (
+        stream_df.writeStream.format("delta")
+        .option("checkpointLocation", checkpoint_path)
+        .trigger(availableNow=True)
+        .toTable(table_name)
+    )
+    query.awaitTermination()
+    return query

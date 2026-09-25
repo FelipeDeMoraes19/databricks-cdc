@@ -17,6 +17,14 @@ class PipelineConfig:
     def volume_path(self) -> str:
         return f"/Volumes/{self.catalog}/{self.schema}/{self.volume_name}"
 
+    @property
+    def events_path(self) -> str:
+        return f"{self.volume_path}/events"
+
+    @property
+    def bronze_checkpoint_path(self) -> str:
+        return f"{self.volume_path}/_checkpoints/bronze"
+
     def full_table(self, table_name: str) -> str:
         return f"{self.catalog}.{self.schema}.{table_name}"
 

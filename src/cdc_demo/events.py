@@ -1,3 +1,5 @@
+import json
+import os
 import random
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -54,3 +56,19 @@ def inject_duplicates_and_shuffle(
     all_events = events + duplicated
     rng.shuffle(all_events)
     return all_events
+
+
+def split_into_batches(events: List[Dict[str, Any]], num_batches: int) -> List[List[Dict[str, Any]]]:
+    batches: List[List[Dict[str, Any]]] = [[] for _ in range(num_batches)]
+    for index, event in enumerate(events):
+        batches[index % num_batches].append(event)
+    return batches
+
+
+def write_events_as_json(events: List[Dict[str, Any]], output_dir: str, file_name: str) -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, file_name)
+    with open(output_path, "w") as f:
+        for event in events:
+            f.write(json.dumps(event) + "\n")
+    return output_path
