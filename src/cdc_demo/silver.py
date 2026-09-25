@@ -120,20 +120,64 @@ def ensure_quarantine_table(spark: SparkSession, table_name: str) -> None:
     )
 
 
-def process_batch(batch_df: DataFrame, silver_table: str, quarantine_table: str) -> None:
-    deduped_df = dedup_latest_by_lsn(dedup_exact_duplicates(batch_df))
-    valid_df, quarantine_df = split_valid_and_quarantine(deduped_df)
+def ensure_silver_events_table(spark: SparkSession, table_name: str) -> None:
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+          payment_id BIGINT,
+          lsn BIGINT,
+          op STRING,
+          amount DECIMAL(14,2),
+          status STRING,
+          updated_at TIMESTAMP,
+          _silver_processed_at TIMESTAMP
+        ) USING DELTA
+        """
+    )
 
-    if not quarantine_df.isEmpty():
-        quarantine_df.write.format("delta").mode("append").saveAsTable(quarantine_table)
 
-    if not valid_df.isEmpty():
-        valid_df.createOrReplaceTempView("silver_batch_events")
+def write_quarantine(quarantine_df: DataFrame, quarantine_table: str, batch_id: int) -> None:
+    if quarantine_df.isEmpty():
+        return
+    (
+        quarantine_df.write.format("delta")
+        .option("txnVersion", batch_id)
+        .option("txnAppId", "silver_quarantine_writer")
+        .mode("append")
+        .saveAsTable(quarantine_table)
+    )
+
+
+def write_silver_events(valid_df: DataFrame, history_table: str, batch_id: int) -> None:
+    if valid_df.isEmpty():
+        return
+    (
+        valid_df.withColumn("_silver_processed_at", F.current_timestamp())
+        .write.format("delta")
+        .option("txnVersion", batch_id)
+        .option("txnAppId", "silver_history_writer")
+        .mode("append")
+        .saveAsTable(history_table)
+    )
+
+
+def process_batch(batch_df: DataFrame, batch_id: int, silver_table: str, history_table: str, quarantine_table: str) -> None:
+    exact_deduped_df = dedup_exact_duplicates(batch_df)
+    valid_df, quarantine_df = split_valid_and_quarantine(exact_deduped_df)
+
+    write_quarantine(quarantine_df, quarantine_table, batch_id)
+    write_silver_events(valid_df, history_table, batch_id)
+
+    latest_valid_df = dedup_latest_by_lsn(valid_df)
+    if not latest_valid_df.isEmpty():
+        latest_valid_df.createOrReplaceTempView("silver_batch_events")
         batch_df.sparkSession.sql(build_merge_sql(silver_table, "silver_batch_events"))
 
 
-def make_batch_processor(silver_table: str, quarantine_table: str) -> Callable[[DataFrame, int], None]:
+def make_batch_processor(
+    silver_table: str, history_table: str, quarantine_table: str
+) -> Callable[[DataFrame, int], None]:
     def _process(batch_df: DataFrame, batch_id: int) -> None:
-        process_batch(batch_df, silver_table, quarantine_table)
+        process_batch(batch_df, batch_id, silver_table, history_table, quarantine_table)
 
     return _process

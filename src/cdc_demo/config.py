@@ -9,6 +9,7 @@ class PipelineConfig:
 
     bronze_table: str = "bronze_payments_cdc"
     silver_table: str = "silver_payments_current"
+    silver_events_table: str = "silver_payment_events"
     quarantine_table: str = "quarantine_payments_cdc"
     dim_table: str = "dim_payments_scd2"
     metrics_table: str = "fact_metrics_daily_status"
