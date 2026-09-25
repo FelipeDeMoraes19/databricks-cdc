@@ -25,6 +25,10 @@ class PipelineConfig:
     def bronze_checkpoint_path(self) -> str:
         return f"{self.volume_path}/_checkpoints/bronze"
 
+    @property
+    def silver_checkpoint_path(self) -> str:
+        return f"{self.volume_path}/_checkpoints/silver"
+
     def full_table(self, table_name: str) -> str:
         return f"{self.catalog}.{self.schema}.{table_name}"
 

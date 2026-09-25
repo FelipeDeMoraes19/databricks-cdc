@@ -1,7 +1,12 @@
-from pyspark.sql import DataFrame
+from typing import Callable, Tuple
+
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import DecimalType, LongType
 from pyspark.sql.window import Window
+
+
+def dedup_exact_duplicates(df: DataFrame, key_cols: Tuple[str, ...] = ("payment_id", "lsn")) -> DataFrame:
+    return df.dropDuplicates(list(key_cols))
 
 
 def dedup_latest_by_lsn(df: DataFrame, key_col: str = "payment_id", lsn_col: str = "lsn") -> DataFrame:
@@ -13,30 +18,45 @@ def dedup_latest_by_lsn(df: DataFrame, key_col: str = "payment_id", lsn_col: str
     )
 
 
-def filter_deletes(df: DataFrame, op_col: str = "op") -> DataFrame:
-    return df.filter(F.col(op_col) != "DELETE")
-
-
-def cast_silver_types(df: DataFrame) -> DataFrame:
-    return (
-        df.withColumn("payment_id", F.col("payment_id").cast(LongType()))
-        .withColumn("amount", F.col("amount").cast(DecimalType(14, 2)))
-        .withColumn("updated_at", F.to_timestamp("updated_at"))
+def split_valid_and_quarantine(df: DataFrame) -> Tuple[DataFrame, DataFrame]:
+    typed_df = (
+        df.withColumn("payment_id_typed", F.expr("try_cast(payment_id AS BIGINT)"))
+        .withColumn("amount_typed", F.expr("try_cast(amount AS DECIMAL(14,2))"))
+        .withColumn("updated_at_typed", F.expr("try_to_timestamp(updated_at)"))
     )
 
+    reason = (
+        F.when(F.col("_rescued_data").isNotNull(), F.lit("rescued_data_present"))
+        .when(F.col("payment_id_typed").isNull(), F.lit("invalid_payment_id"))
+        .when(F.col("amount_typed").isNull(), F.lit("invalid_amount"))
+        .when(F.col("updated_at_typed").isNull(), F.lit("invalid_updated_at"))
+    )
 
-def validate_cast(
-    original_df: DataFrame,
-    typed_df: DataFrame,
-    cast_cols=("payment_id", "amount", "updated_at"),
-) -> None:
-    failures = typed_df.select(
-        *[F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c) for c in cast_cols]
-    ).first()
+    classified_df = typed_df.withColumn("_quarantine_reason", reason)
 
-    bad_cols = [c for c in cast_cols if failures[c] and failures[c] > 0]
-    if bad_cols:
-        raise ValueError(f"Contrato de tipos violado nas colunas: {bad_cols}")
+    valid_df = classified_df.filter(F.col("_quarantine_reason").isNull()).select(
+        F.col("payment_id_typed").alias("payment_id"),
+        "lsn",
+        "op",
+        F.col("amount_typed").alias("amount"),
+        "status",
+        F.col("updated_at_typed").alias("updated_at"),
+    )
+
+    quarantine_df = classified_df.filter(F.col("_quarantine_reason").isNotNull()).select(
+        "payment_id",
+        "lsn",
+        "op",
+        "amount",
+        "status",
+        "updated_at",
+        "_rescued_data",
+        "_source_file",
+        "_ingested_at",
+        F.col("_quarantine_reason").alias("reason"),
+    )
+
+    return valid_df, quarantine_df
 
 
 def build_merge_sql(
@@ -63,3 +83,57 @@ def build_merge_sql(
       INSERT ({key_col}, {lsn_col}, op, amount, status, updated_at, _silver_processed_at)
       VALUES (source.{key_col}, source.{lsn_col}, source.op, source.amount, source.status, source.updated_at, current_timestamp())
     """
+
+
+def ensure_silver_table(spark: SparkSession, table_name: str) -> None:
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+          payment_id BIGINT,
+          lsn BIGINT,
+          op STRING,
+          amount DECIMAL(14,2),
+          status STRING,
+          updated_at TIMESTAMP,
+          _silver_processed_at TIMESTAMP
+        ) USING DELTA
+        """
+    )
+
+
+def ensure_quarantine_table(spark: SparkSession, table_name: str) -> None:
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+          payment_id STRING,
+          lsn BIGINT,
+          op STRING,
+          amount STRING,
+          status STRING,
+          updated_at STRING,
+          _rescued_data STRING,
+          _source_file STRING,
+          _ingested_at TIMESTAMP,
+          reason STRING
+        ) USING DELTA
+        """
+    )
+
+
+def process_batch(batch_df: DataFrame, silver_table: str, quarantine_table: str) -> None:
+    deduped_df = dedup_latest_by_lsn(dedup_exact_duplicates(batch_df))
+    valid_df, quarantine_df = split_valid_and_quarantine(deduped_df)
+
+    if not quarantine_df.isEmpty():
+        quarantine_df.write.format("delta").mode("append").saveAsTable(quarantine_table)
+
+    if not valid_df.isEmpty():
+        valid_df.createOrReplaceTempView("silver_batch_events")
+        batch_df.sparkSession.sql(build_merge_sql(silver_table, "silver_batch_events"))
+
+
+def make_batch_processor(silver_table: str, quarantine_table: str) -> Callable[[DataFrame, int], None]:
+    def _process(batch_df: DataFrame, batch_id: int) -> None:
+        process_batch(batch_df, silver_table, quarantine_table)
+
+    return _process
