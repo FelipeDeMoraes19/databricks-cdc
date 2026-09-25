@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 01 · Bronze
+# MAGIC # 02 · Bronze
 
 # COMMAND ----------
 

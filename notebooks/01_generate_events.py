@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 99 · Generate CDC events
+# MAGIC # 01 · Generate CDC events
 
 # COMMAND ----------
 

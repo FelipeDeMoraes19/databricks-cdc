@@ -19,8 +19,10 @@ def read_bronze_stream(spark: SparkSession, source_path: str) -> DataFrame:
     return (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
+        .option("cloudFiles.rescuedDataColumn", "_rescued_data")
         .schema(BRONZE_SCHEMA)
         .load(source_path)
+        .withColumn("_source_file", F.col("_metadata.file_path"))
         .withColumn("_ingested_at", F.current_timestamp())
     )
 
