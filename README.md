@@ -40,5 +40,39 @@ tests/               pytest tests for the functions in src/
   earlier transitions (unlike grouping by status and summing `amount`, which
   would count the same payment's amount once per status it passed through).
 
+## Governance (PII)
+
+Each CDC event carries `customer_email` and `customer_document` (a synthetic
+CPF with valid check digits). They're handled differently depending on the
+layer:
+
+- **Bronze** keeps both fields raw, like everything else in bronze (capture
+  as-is from the source).
+- **Silver** replaces `customer_document` with `customer_document_hash`, an
+  HMAC-SHA256 of the document. The HMAC key is never in the code: it lives in
+  a Databricks secret (`databricks secrets create-scope databricks-cdc` /
+  `put-secret databricks-cdc document_hmac_key`) and is read at runtime with
+  `dbutils.secrets.get(...)` inside the `03_silver` notebook, then passed into
+  `foreachBatch` as a plain string. The raw document is never written to
+  silver, gold, or the quarantine table.
+- **`customer_email`** is kept in clear text in the table, but protected with
+  a Unity Catalog **column mask** (`notebooks/05_governance.py`): a SQL
+  function checks group membership and returns the full email to members of
+  an authorized group, or a masked value (`***@domain.com`) to everyone else.
+  Verified end-to-end on Free Edition: querying `silver_payments_current` as
+  a member of the authorized group returns the full address; removing that
+  membership (`databricks groups patch ...`) makes the same query return the
+  masked value a few dozen seconds later (group membership isn't
+  instantaneous - Unity Catalog caches it briefly).
+
+**Free Edition note:** the Unity-Catalog-recommended function for this is
+`is_account_group_member()`, which checks *account*-level groups. A group
+created through the CLI's workspace-level Groups API
+(`databricks groups create`) was not recognized by it in this environment -
+only by the older, workspace-scoped `is_member()`, which is what the mask
+function in this repo actually uses. This is a one-time manual setup step
+(create the group, add members) done outside the pipeline code, documented
+here for reproducibility rather than automated in a notebook.
+
 Architecture diagram, technical decisions, run instructions, and results are
 documented at the end of the project.

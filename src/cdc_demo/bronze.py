@@ -11,6 +11,8 @@ BRONZE_SCHEMA = StructType(
         StructField("amount", StringType(), True),
         StructField("status", StringType(), True),
         StructField("updated_at", StringType(), True),
+        StructField("customer_email", StringType(), True),
+        StructField("customer_document", StringType(), True),
     ]
 )
 

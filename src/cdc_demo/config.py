@@ -16,6 +16,11 @@ class PipelineConfig:
     status_transitions_table: str = "fact_status_transitions_daily"
     captured_volume_table: str = "fact_captured_volume_daily"
 
+    secret_scope: str = "databricks-cdc"
+    secret_document_key: str = "document_hmac_key"
+    mask_function_name: str = "mask_customer_email"
+    pii_authorized_group: str = "pii_readers"
+
     @property
     def volume_path(self) -> str:
         return f"/Volumes/{self.catalog}/{self.schema}/{self.volume_name}"

@@ -29,13 +29,15 @@ ensure_silver_table(spark, silver_table)
 ensure_silver_events_table(spark, history_table)
 ensure_quarantine_table(spark, quarantine_table)
 
+document_hash_key = dbutils.secrets.get(scope=cfg.secret_scope, key=cfg.secret_document_key)
+
 # COMMAND ----------
 
 bronze_stream = spark.readStream.table(cfg.full_table(cfg.bronze_table))
 
 query = (
     bronze_stream.writeStream
-    .foreachBatch(make_batch_processor(silver_table, history_table, quarantine_table))
+    .foreachBatch(make_batch_processor(silver_table, history_table, quarantine_table, document_hash_key))
     .option("checkpointLocation", cfg.silver_checkpoint_path)
     .trigger(availableNow=True)
     .start()
