@@ -16,5 +16,20 @@ def create_email_mask_function(
     )
 
 
-def apply_email_mask(spark: SparkSession, table_name: str, function_name: str, column: str = "customer_email") -> None:
+def create_document_mask_function(
+    spark: SparkSession, catalog: str, schema: str, function_name: str, authorized_group: str
+) -> None:
+    spark.sql(
+        f"""
+        CREATE OR REPLACE FUNCTION {catalog}.{schema}.{function_name}(document STRING)
+        RETURNS STRING
+        RETURN CASE
+          WHEN is_member('{authorized_group}') THEN document
+          ELSE '***.***.***-**'
+        END
+        """
+    )
+
+
+def apply_column_mask(spark: SparkSession, table_name: str, function_name: str, column: str) -> None:
     spark.sql(f"ALTER TABLE {table_name} ALTER COLUMN {column} SET MASK {function_name}")

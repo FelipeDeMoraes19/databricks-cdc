@@ -18,7 +18,8 @@ class PipelineConfig:
 
     secret_scope: str = "databricks-cdc"
     secret_document_key: str = "document_hmac_key"
-    mask_function_name: str = "mask_customer_email"
+    email_mask_function_name: str = "mask_customer_email"
+    document_mask_function_name: str = "mask_bronze_document"
     pii_authorized_group: str = "pii_readers"
 
     @property

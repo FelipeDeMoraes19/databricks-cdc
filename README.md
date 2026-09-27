@@ -1,5 +1,7 @@
 # databricks-cdc
 
+[![CI](https://github.com/FelipeDeMoraes19/databricks-cdc/actions/workflows/ci.yml/badge.svg)](https://github.com/FelipeDeMoraes19/databricks-cdc/actions/workflows/ci.yml)
+
 End-to-end data pipeline on Databricks simulating Change Data Capture (CDC)
 for a `payments` table, built in Python/PySpark following the medallion
 architecture (bronze -> silver -> gold), with Unity Catalog, Auto Loader,
@@ -21,7 +23,8 @@ resources/           Asset Bundle job definitions
 src/cdc_demo/        transformation code (bronze/silver/gold), testable outside Databricks
 notebooks/           thin notebooks orchestrating the modules in src/
 notebooks/archive/   first, exploratory batch version of the project, kept for reference
-tests/               pytest tests for the functions in src/
+tests/               pytest tests for the functions in src/, run locally and in CI
+.github/workflows/   GitHub Actions CI (pytest on every push/PR)
 ```
 
 ## Gold tables
@@ -47,7 +50,15 @@ CPF with valid check digits). They're handled differently depending on the
 layer:
 
 - **Bronze** keeps both fields raw, like everything else in bronze (capture
-  as-is from the source).
+  as-is from the source) - but `customer_document` is not left unprotected:
+  it carries the same kind of Unity Catalog column mask as `customer_email`
+  (a dedicated function, since a CPF has no `@domain` to fall back on -
+  unauthorized readers get a fixed `***.***.***-**` instead of a partial
+  reveal, since a national ID is more sensitive than an email address).
+  A table-level `GRANT` restricting the whole bronze table to an engineering
+  group would also have worked, but the column mask was chosen to reuse the
+  same mechanism and authorized group (`pii_readers`) already built for
+  `customer_email`, instead of introducing a second governance model.
 - **Silver** replaces `customer_document` with `customer_document_hash`, an
   HMAC-SHA256 of the document. The HMAC key is never in the code: it lives in
   a Databricks secret (`databricks secrets create-scope databricks-cdc` /
@@ -63,7 +74,8 @@ layer:
   a member of the authorized group returns the full address; removing that
   membership (`databricks groups patch ...`) makes the same query return the
   masked value a few dozen seconds later (group membership isn't
-  instantaneous - Unity Catalog caches it briefly).
+  instantaneous - Unity Catalog caches it briefly). The same
+  member/non-member toggle was verified against `bronze_payments_cdc.customer_document`.
 
 **Free Edition note:** the Unity-Catalog-recommended function for this is
 `is_account_group_member()`, which checks *account*-level groups. A group
@@ -73,6 +85,40 @@ only by the older, workspace-scoped `is_member()`, which is what the mask
 function in this repo actually uses. This is a one-time manual setup step
 (create the group, add members) done outside the pipeline code, documented
 here for reproducibility rather than automated in a notebook.
+
+## Tests
+
+`tests/` covers the pure Python event generator, the silver dedup/validation/
+quarantine logic (including the exact scenario in
+`tests/fixtures/cdc_scenario_batch.json`), the `MERGE` LSN guard (including a
+delayed `DELETE`), idempotent `foreachBatch` writes, and the gold SCD Type 2 /
+metrics builders - all against a local Spark + Delta session
+(`tests/conftest.py`), not mocks. The local session sets
+`spark.sql.ansi.enabled=true` to match Databricks serverless: without it, the
+`.cast()`-vs-ANSI bug fixed in Fase 3 would pass locally and only surface on
+Databricks.
+
+```
+pip install -r requirements-dev.txt
+pytest
+```
+
+**Windows-only setup:** plain `pyspark` needs a Hadoop `winutils.exe` (and
+`hadoop.dll`) on Windows even for local-only tests - without it the JVM
+doesn't start. Download a build matching the Hadoop version PySpark ships
+with (e.g. from `cdarlint/winutils` on GitHub) into `C:\hadoop\bin\`, then set:
+
+```
+set HADOOP_HOME=C:\hadoop
+set PATH=%HADOOP_HOME%\bin;%PATH%
+set PYSPARK_PYTHON=<full path to your python.exe>
+set PYSPARK_DRIVER_PYTHON=<full path to your python.exe>
+```
+
+`PYSPARK_PYTHON` matters if `python`/`python3` on PATH could resolve to the
+Windows Store alias instead of the real interpreter - Spark's worker
+processes fail silently otherwise. Linux (including GitHub Actions) needs
+none of this.
 
 Architecture diagram, technical decisions, run instructions, and results are
 documented at the end of the project.
